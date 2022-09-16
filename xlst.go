@@ -27,7 +27,7 @@ var (
 type Xlst struct {
 	file      *xlsx.File
 	report    *xlsx.File
-	mergeMap  map[string]map[string]cellCounter
+	mergeMap  map[string]map[string]map[string]cellCounter
 	mergeOnce sync.Once
 	sync.Mutex
 }
@@ -54,7 +54,7 @@ func NewFromBinary(content []byte) (*Xlst, error) {
 		return nil, err
 	}
 
-	res := &Xlst{file: file, mergeMap: make(map[string]map[string]cellCounter)}
+	res := &Xlst{file: file, mergeMap: make(map[string]map[string]map[string]cellCounter)}
 	return res, nil
 }
 
@@ -74,6 +74,9 @@ func (m *Xlst) RenderWithOptions(in interface{}, options *Options) error {
 	}
 	report := xlsx.NewFile()
 	for si, sheet := range m.file.Sheets {
+		if _, ok := m.mergeMap[sheet.Name]; !ok {
+			m.mergeMap[sheet.Name] = make(map[string]map[string]cellCounter)
+		}
 		ctx := getCtx(in, si)
 		report.AddSheet(sheet.Name)
 		cloneSheet(sheet, report.Sheets[si])
@@ -99,7 +102,7 @@ func (m *Xlst) ReadTemplate(path string) error {
 		return err
 	}
 	m.file = file
-	m.mergeMap = make(map[string]map[string]cellCounter)
+	m.mergeMap = make(map[string]map[string]map[string]cellCounter)
 	return nil
 }
 
@@ -114,15 +117,17 @@ func (m *Xlst) Save(path string) error {
 
 func (m *Xlst) mergeCell() {
 	m.mergeOnce.Do(func() {
-		for _, v := range m.mergeMap {
-			for _, vv := range v {
-				style := vv.cell.GetStyle()
-				style.Border.Top = "thin"
-				style.Border.Bottom = "thin"
-				style.Border.Left = "thin"
-				style.Border.Right = "thin"
-				vv.cell.SetStyle(style)
-				vv.cell.VMerge = vv.count
+		for _, sheep := range m.report.Sheet {
+			for _, v := range m.mergeMap[sheep.Name] {
+				for _, vv := range v {
+					style := vv.cell.GetStyle()
+					style.Border.Top = "thin"
+					style.Border.Bottom = "thin"
+					style.Border.Left = "thin"
+					style.Border.Right = "thin"
+					vv.cell.SetStyle(style)
+					vv.cell.VMerge = vv.count
+				}
 			}
 		}
 	})
@@ -231,6 +236,7 @@ func cloneRow(from, to *xlsx.Row, options *Options) {
 }
 
 func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
+	sn := cell.Row.Sheet.Name
 	bflag := false
 	if rgxMerge.MatchString(cell.Value) {
 		bflag = true
@@ -249,19 +255,19 @@ func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 		if strings.HasPrefix(key, "_") || strings.HasPrefix(key, "_header_") {
 			isHeader = true
 		}
-		if _, ok := m.mergeMap[key]; !ok {
-			m.mergeMap[key] = make(map[string]cellCounter)
+		if _, ok := m.mergeMap[sn][key]; !ok {
+			m.mergeMap[sn][key] = make(map[string]cellCounter)
 		}
-		if _, ok := m.mergeMap[key][out]; !ok {
+		if _, ok := m.mergeMap[sn][key][out]; !ok {
 			if isHeader {
-				m.mergeMap[key][out] = cellCounter{cell, 1}
+				m.mergeMap[sn][key][out] = cellCounter{cell, 1}
 			} else {
-				m.mergeMap[key][out] = cellCounter{cell, 0}
+				m.mergeMap[sn][key][out] = cellCounter{cell, 0}
 			}
 		} else {
-			counter := m.mergeMap[key][out]
+			counter := m.mergeMap[sn][key][out]
 			counter.count++
-			m.mergeMap[key][out] = counter
+			m.mergeMap[sn][key][out] = counter
 		}
 
 	}
