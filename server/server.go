@@ -27,7 +27,96 @@ func main() {
 <form action="/render" method="post" enctype="multipart/form-data">
     <p>
     JSON Data: <textarea rows="20" cols="50" name="data" name="name">
-{"accident":[{"description":"title","level":"level"},{"description":"title","level":"level"},{"description":"title","level":"level"}],"group":"Supply Chain","manager":"","name":"name-cn-sls-mf-leader","okrs":[{"category":"Business Project Goals","completion":"","info":"Data Mart: SLS Mart\nAccomplish TWS module for sls mart, guarante 80% of OFM users migrate to sls mart.","keyResult":"KR1：Start construction of TWS Mart, go UAT at the end of June.","remark":"","score":0,"weight":0,"weightScore":0},{"category":"Business Project Goals","completion":"","info":"Data Mart: SLS Mart\nAccomplish TWS module for sls mart, guarante 80% of OFM users migrate to sls mart.","keyResult":"KR2：At the end of June, the migration of local users of OFM and users of SLS union tables and marketplace OFM will be completed.","remark":"","score":0,"weight":0,"weightScore":0},{"category":"Business Project Goals","completion":"","info":"Data Product：Mart Configuration Tool\nAccomplish Mart Configuration Tool, migrate some of BI users' offline source table with MCT ","keyResult":"KR1：End of April, Mart Configuration Tool phase 1 startup，complete technical design","remark":"","score":0,"weight":0,"weightScore":0},{"category":"Business Project Goals","completion":"","info":"Data Product：Mart Configuration Tool\nAccomplish Mart Configuration Tool, migrate some of BI users' offline source table with MCT ","keyResult":"KR1：End of May, Mart Configuration Tool phase 1 - Go UAT","remark":"","score":0,"weight":0,"weightScore":0},{"category":"Internal Project Goals","completion":"","info":"Data Quality Improvement\nBuild automatic test procedure and test case lib to improve efficiency","keyResult":"KR1: Mid of May, build up test case lib for all domains","remark":"","score":0,"weight":0,"weightScore":0},{"category":"Internal Project Goals","completion":"","info":"Data Quality Improvement\nBuild automatic test procedure and test case lib to improve efficiency","keyResult":"KR2: End of Apr, integrate test cases with Athena, generate automatic execution tasks.","remark":"","score":0,"weight":0,"weightScore":0}],"quarter":"Q1","reviewOverall":"","reviewResult":"","role":"Tech Leader","team":"","totalScore":0}
+{
+  "accident": [
+    {
+      "description": "title",
+      "level": "level",
+      "title_merge": "线上事故"
+    },
+    {
+      "description": "title",
+      "level": "level",
+      "title_merge": "线上事故"
+    },
+    {
+      "description": "title",
+      "level": "level",
+      "title_merge": "线上事故"
+    }
+  ],
+  "group": "Company Group",
+  "manager": "",
+  "name": "name-cn-sls-mf-leader",
+  "okrs": [
+    {
+      "category_merge": "Business Project Goals",
+      "completion": "",
+      "info_merge": "O1: Object1",
+      "keyResult": "KR1：what is the name",
+      "remark": "",
+      "score": 0,
+      "weight": 0,
+      "weightScore": 0
+    },
+    {
+      "category_merge": "Business Project Goals",
+      "completion": "",
+      "info_merge": "O1: Object1",
+      "keyResult": "KR2：what is the second key result",
+      "remark": "",
+      "score": 0,
+      "weight": 0,
+      "weightScore": 0
+    },
+    {
+      "category_merge": "Business Project Goals",
+      "completion": "",
+      "info_merge": "O2: Object2",
+      "keyResult": "KR1：what is the KR1",
+      "remark": "",
+      "score": 0,
+      "weight": 0,
+      "weightScore": 0
+    },
+    {
+      "category_merge": "Business Project Goals",
+      "completion": "",
+      "info_merge": "O2: Object2",
+      "keyResult": "KR1：this is okr1",
+      "remark": "",
+      "score": 0,
+      "weight": 0,
+      "weightScore": 0
+    },
+    {
+      "category_merge": "Internal Project Goals",
+      "completion": "",
+      "info_merge": "O3: Object3",
+      "keyResult": "KR1: my name is okr1",
+      "remark": "",
+      "score": 0,
+      "weight": 0,
+      "weightScore": 0
+    },
+    {
+      "category_merge": "Internal Project Goals",
+      "completion": "",
+      "info_merge": "O3: Object3",
+      "keyResult": "KR2: what is this?",
+      "remark": "",
+      "score": 0,
+      "weight": 0,
+      "weightScore": 0
+    }
+  ],
+  "quarter": "Q1",
+  "reviewOverall": "",
+  "reviewResult": "",
+  "role": "Tech Leader",
+  "team": "",
+  "totalScore": 0
+}
 </textarea>
    </p>
     <p>
