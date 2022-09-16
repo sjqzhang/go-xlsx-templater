@@ -60,7 +60,7 @@ func NewFromBinary(content []byte) (*Xlst, error) {
 func (m *Xlst) Render(in interface{}) error {
 	m.Lock()
 	defer m.Unlock()
-	err:= m.RenderWithOptions(in, nil)
+	err := m.RenderWithOptions(in, nil)
 	m.mergeCell()
 	return err
 }
@@ -110,11 +110,11 @@ func (m *Xlst) Save(path string) error {
 	return m.report.Save(path)
 }
 
-func (m *Xlst) mergeCell()  {
+func (m *Xlst) mergeCell() {
 	m.mergeOnce.Do(func() {
 		for _, v := range m.mergeMap {
 			for _, vv := range v {
-				style:=vv.cell.GetStyle()
+				style := vv.cell.GetStyle()
 				style.Border.Top = "thin"
 				style.Border.Bottom = "thin"
 				style.Border.Left = "thin"
@@ -241,12 +241,21 @@ func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 	}
 	out, err := template.Exec(ctx)
 	if bflag {
-		key := rgTrim.ReplaceAllString(cell.Value, "")
+		key := rgxMerge.FindString(cell.Value)
+		key = rgTrim.ReplaceAllString(key, "")
+		isHeader := false
+		if strings.HasPrefix(key, "_") || strings.HasPrefix(key, "_header_") {
+			isHeader = true
+		}
 		if _, ok := m.mergeMap[key]; !ok {
 			m.mergeMap[key] = make(map[string]cellCounter)
 		}
 		if _, ok := m.mergeMap[key][out]; !ok {
-			m.mergeMap[key][out] = cellCounter{cell, 0}
+			if isHeader {
+				m.mergeMap[key][out] = cellCounter{cell, 1}
+			} else {
+				m.mergeMap[key][out] = cellCounter{cell, 0}
+			}
 		} else {
 			counter := m.mergeMap[key][out]
 			counter.count++
