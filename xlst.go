@@ -3,6 +3,8 @@ package xlst
 import (
 	"errors"
 	"fmt"
+
+	"github.com/tealeg/xlsx"
 	"io"
 	"reflect"
 	"regexp"
@@ -10,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/aymerick/raymond"
-	"github.com/tealeg/xlsx"
+	//xlsx "github.com/tealeg/xlsx/v3"
 )
 
 var (
