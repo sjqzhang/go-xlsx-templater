@@ -7,21 +7,32 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/aymerick/raymond"
 	"github.com/tealeg/xlsx"
 )
 
 var (
+	rgTrim      = regexp.MustCompile(`^\{\{\s*|\s*\}\}$`)
 	rgx         = regexp.MustCompile(`\{\{\s*(\w+)\.\w+\s*\}\}`)
+	rgxMerge    = regexp.MustCompile(`\{\{\s*(\w+)\.\w+_merge\s*\}\}`)
 	rangeRgx    = regexp.MustCompile(`\{\{\s*range\s+(\w+)\s*\}\}`)
 	rangeEndRgx = regexp.MustCompile(`\{\{\s*end\s*\}\}`)
 )
 
 // Xlst Represents template struct
 type Xlst struct {
-	file   *xlsx.File
-	report *xlsx.File
+	file      *xlsx.File
+	report    *xlsx.File
+	mergeMap  map[string]map[string]cellCounter
+	mergeOnce sync.Once
+	sync.Mutex
+}
+
+type cellCounter struct {
+	cell  *xlsx.Cell
+	count int
 }
 
 // Options for render has only one property WrapTextInAllCells for wrapping text
@@ -41,13 +52,17 @@ func NewFromBinary(content []byte) (*Xlst, error) {
 		return nil, err
 	}
 
-	res := &Xlst{file: file}
+	res := &Xlst{file: file, mergeMap: make(map[string]map[string]cellCounter)}
 	return res, nil
 }
 
 // Render renders report and stores it in a struct
 func (m *Xlst) Render(in interface{}) error {
-	return m.RenderWithOptions(in, nil)
+	m.Lock()
+	defer m.Unlock()
+	err:= m.RenderWithOptions(in, nil)
+	m.mergeCell()
+	return err
 }
 
 // RenderWithOptions renders report with options provided and stores it in a struct
@@ -61,7 +76,7 @@ func (m *Xlst) RenderWithOptions(in interface{}, options *Options) error {
 		report.AddSheet(sheet.Name)
 		cloneSheet(sheet, report.Sheets[si])
 
-		err := renderRows(report.Sheets[si], sheet.Rows, ctx, options)
+		err := renderRows(m, report.Sheets[si], sheet.Rows, ctx, options)
 		if err != nil {
 			return err
 		}
@@ -82,6 +97,7 @@ func (m *Xlst) ReadTemplate(path string) error {
 		return err
 	}
 	m.file = file
+	m.mergeMap = make(map[string]map[string]cellCounter)
 	return nil
 }
 
@@ -90,7 +106,24 @@ func (m *Xlst) Save(path string) error {
 	if m.report == nil {
 		return errors.New("Report was not generated")
 	}
+
 	return m.report.Save(path)
+}
+
+func (m *Xlst) mergeCell()  {
+	m.mergeOnce.Do(func() {
+		for _, v := range m.mergeMap {
+			for _, vv := range v {
+				style:=vv.cell.GetStyle()
+				style.Border.Top = "thin"
+				style.Border.Bottom = "thin"
+				style.Border.Left = "thin"
+				style.Border.Right = "thin"
+				vv.cell.SetStyle(style)
+				vv.cell.VMerge = vv.count
+			}
+		}
+	})
 }
 
 // Write writes generated report to provided writer
@@ -101,7 +134,7 @@ func (m *Xlst) Write(writer io.Writer) error {
 	return m.report.Write(writer)
 }
 
-func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{}, options *Options) error {
+func renderRows(m *Xlst, sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{}, options *Options) error {
 	for ri := 0; ri < len(rows); ri++ {
 		row := rows[ri]
 
@@ -123,7 +156,7 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 
 			for idx := range rangeCtx {
 				localCtx := mergeCtx(rangeCtx[idx], ctx)
-				err := renderRows(sheet, rows[ri:rangeEndIndex], localCtx, options)
+				err := renderRows(m, sheet, rows[ri:rangeEndIndex], localCtx, options)
 				if err != nil {
 					return err
 				}
@@ -138,7 +171,7 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 		if prop == "" {
 			newRow := sheet.AddRow()
 			cloneRow(row, newRow, options)
-			err := renderRow(newRow, ctx)
+			err := renderRow(m, newRow, ctx)
 			if err != nil {
 				return err
 			}
@@ -148,7 +181,7 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 		if !isArray(ctx, prop) {
 			newRow := sheet.AddRow()
 			cloneRow(row, newRow, options)
-			err := renderRow(newRow, ctx)
+			err := renderRow(m, newRow, ctx)
 			if err != nil {
 				return err
 			}
@@ -161,14 +194,13 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 			newRow := sheet.AddRow()
 			cloneRow(row, newRow, options)
 			ctx[prop] = arr.Index(i).Interface()
-			err := renderRow(newRow, ctx)
+			err := renderRow(m, newRow, ctx)
 			if err != nil {
 				return err
 			}
 		}
 		ctx[prop] = arrBackup
 	}
-
 	return nil
 }
 
@@ -196,7 +228,11 @@ func cloneRow(from, to *xlsx.Row, options *Options) {
 	}
 }
 
-func renderCell(cell *xlsx.Cell, ctx interface{}) error {
+func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
+	bflag := false
+	if rgxMerge.MatchString(cell.Value) {
+		bflag = true
+	}
 	tpl := strings.Replace(cell.Value, "{{", "{{{", -1)
 	tpl = strings.Replace(tpl, "}}", "}}}", -1)
 	template, err := raymond.Parse(tpl)
@@ -204,6 +240,20 @@ func renderCell(cell *xlsx.Cell, ctx interface{}) error {
 		return err
 	}
 	out, err := template.Exec(ctx)
+	if bflag {
+		key := rgTrim.ReplaceAllString(cell.Value, "")
+		if _, ok := m.mergeMap[key]; !ok {
+			m.mergeMap[key] = make(map[string]cellCounter)
+		}
+		if _, ok := m.mergeMap[key][out]; !ok {
+			m.mergeMap[key][out] = cellCounter{cell, 0}
+		} else {
+			counter := m.mergeMap[key][out]
+			counter.count++
+			m.mergeMap[key][out] = counter
+		}
+
+	}
 	if err != nil {
 		return err
 	}
@@ -327,9 +377,9 @@ func getRangeEndIndex(rows []*xlsx.Row) int {
 	return -1
 }
 
-func renderRow(in *xlsx.Row, ctx interface{}) error {
+func renderRow(m *Xlst, in *xlsx.Row, ctx interface{}) error {
 	for _, cell := range in.Cells {
-		err := renderCell(cell, ctx)
+		err := renderCell(m, cell, ctx)
 		if err != nil {
 			return err
 		}
