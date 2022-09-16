@@ -33,43 +33,43 @@ and `{{end}}`.
 
 ### Prepare context data
 
-```go
-    ctx := map[string]interface{}{
-"name": "Github User",
-"groupHeader": "Group name",
-"nameHeader": "Item name",
-"quantityHeader": "Quantity",
-"groups": []map[string]interface{}{
-{
-"name":  "Work",
-"total": 3,
-"items": []map[string]interface{}{
-{
-"name":     "Pen",
-"quantity": 2,
-},
-{
-"name":     "Pencil",
-"quantity": 1,
-},
-},
-},
-{
-"name":  "Weekend",
-"total": 36,
-"items": []map[string]interface{}{
-{
-"name":     "Condom",
-"quantity": 12,
-},
-{
-"name":     "Beer",
-"quantity": 24,
-},
-},
-},
-},
-}
+```
+	ctx := map[string]interface{}{
+		"name": "Github User",
+		"groupHeader": "Group name",
+		"nameHeader": "Item name",
+		"quantityHeader": "Quantity",
+		"groups": []map[string]interface{}{
+			{
+				"name":  "Work",
+				"total": 3,
+				"items": []map[string]interface{}{
+					{
+						"name":     "Pen",
+						"quantity": 2,
+					},
+					{
+						"name":     "Pencil",
+						"quantity": 1,
+					},
+				},
+			},
+			{
+				"name":  "Weekend",
+				"total": 36,
+				"items": []map[string]interface{}{
+					{
+						"name":     "Condom",
+						"quantity": 12,
+					},
+					{
+						"name":     "Beer",
+						"quantity": 24,
+					},
+				},
+			},
+		},
+	}
 ```
 
 ### Read template, render with context and save to disk.
