@@ -2,67 +2,82 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+
 	xlst "github.com/sjqzhang/go-xlsx-templater"
 )
 
 func main() {
+	fmt.Println("--------")
+	testOkrTemplate()
+	fmt.Println("--------")
+	demo()
+}
+
+func testOkrTemplate() {
 	doc := xlst.New()
 	doc.ReadTemplate("./demo/okrTemplate.xlsx")
 	var ctx map[string]interface{}
 	json.Unmarshal([]byte(js), &ctx)
 	doc.Render(ctx)
-	doc.Save("./demo/report.xlsx")
+	doc.Save("./demo/okrTemplate_report.xlsx")
 }
 
-//
-//func main() {
-//	doc := xlst.New()
-//	doc.ReadTemplate("./template.xlsx")
-//  ctx := map[string]interface{}{
-//        "name": "Github User",
-//        "groupHeader": "Group name",
-//        "nameHeader": "Item name",
-//        "quantityHeader": "Quantity",
-//        "groups": []map[string]interface{}{
-//            {
-//                "name":  "Work",
-//                "total": 3,
-//                "items": []map[string]interface{}{
-//                    {
-//                        "name":     "Pen",
-//                        "quantity": 2,
-//                    },
-//                    {
-//                        "name":     "Pencil",
-//                        "quantity": 1,
-//                    },
-//                },
-//            },
-//            {
-//                "name":  "Weekend",
-//                "total": 36,
-//                "items": []map[string]interface{}{
-//                    {
-//                        "name":     "Condom",
-//                        "quantity": 12,
-//                    },
-//                    {
-//                        "name":     "Beer",
-//                        "quantity": 24,
-//                    },
-//                },
-//            },
-//        },
-//    }
-//	err := doc.Render(ctx)
-//	if err != nil {
-//		panic(err)
-//	}
-//	err = doc.Save("./report.xlsx")
-//	if err != nil {
-//		panic(err)
-//	}
-//}
+func demo() {
+	doc := xlst.New()
+	if err := doc.ReadTemplate("./demo/template.xlsx"); err != nil {
+		fmt.Println(err)
+		return
+	}
+	ctx := map[string]interface{}{
+		"name":           "Github User",
+		"groupHeader":    "Group name",
+		"nameHeader":     "Item name",
+		"quantityHeader": "Quantity",
+		"groups": []map[string]interface{}{
+			{
+				"name":  "Work",
+				"total": 3,
+				"items": []map[string]interface{}{
+					{
+						"name":     "Pen",
+						"quantity": 2,
+					},
+					{
+						"name":     "Pencil",
+						"quantity": 1,
+					},
+				},
+			},
+			{
+				"name":  "Weekend",
+				"total": 36,
+				"items": []map[string]interface{}{
+					{
+						"name":     "Condom",
+						"quantity": 12,
+					},
+					{
+						"name":     "Beer",
+						"quantity": 24,
+					},
+				},
+			},
+		},
+		"url":  "https://github.com/",
+		"file": "./demo.go",
+	}
+	err := doc.Render(ctx)
+	if err != nil {
+		fmt.Println("render", err)
+
+	}
+	err = doc.Save("./demo/report.xlsx")
+	if err != nil {
+		fmt.Println("save", err)
+
+	}
+}
 
 const js = `
 {
