@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tealeg/xlsx"
 	"io"
 	"reflect"
 	"regexp"
@@ -12,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/aymerick/raymond"
-	//xlsx "github.com/tealeg/xlsx/v3"
+	xlsx "github.com/tealeg/xlsx/v3"
 )
 
 var (
@@ -81,18 +80,25 @@ func (m *Xlst) RenderWithOptions(in interface{}, options *Options) error {
 		report.AddSheet(sheet.Name)
 		cloneSheet(sheet, report.Sheets[si])
 
-		err := renderRows(m, report.Sheets[si], sheet.Rows, ctx, options)
+		err := m.renderRows(report.Sheets[si], getRows(sheet), ctx, options)
 		if err != nil {
 			return err
 		}
 
-		for _, col := range sheet.Cols {
-			report.Sheets[si].Cols = append(report.Sheets[si].Cols, col)
-		}
 	}
 	m.report = report
 
 	return nil
+}
+
+func getRows(sheet *xlsx.Sheet) []*xlsx.Row {
+	rows := make([]*xlsx.Row, sheet.MaxRow)
+	sheet.ForEachRow(func(r *xlsx.Row) error {
+		rows[r.GetCoordinate()] = r
+		//rows = append(rows, r)
+		return nil
+	})
+	return rows
 }
 
 // ReadTemplate reads template from disk and stores it in a struct
@@ -141,7 +147,7 @@ func (m *Xlst) Write(writer io.Writer) error {
 	return m.report.Write(writer)
 }
 
-func renderRows(m *Xlst, sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{}, options *Options) error {
+func (m *Xlst) renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{}, options *Options) error {
 	for ri := 0; ri < len(rows); ri++ {
 		row := rows[ri]
 
@@ -163,7 +169,7 @@ func renderRows(m *Xlst, sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]int
 
 			for idx := range rangeCtx {
 				localCtx := mergeCtx(rangeCtx[idx], ctx)
-				err := renderRows(m, sheet, rows[ri:rangeEndIndex], localCtx, options)
+				err := m.renderRows(sheet, rows[ri:rangeEndIndex], localCtx, options)
 				if err != nil {
 					return err
 				}
@@ -212,7 +218,8 @@ func renderRows(m *Xlst, sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]int
 }
 
 func cloneCell(from, to *xlsx.Cell, options *Options) {
-	to.Value = from.Value
+	*to = *from
+
 	style := from.GetStyle()
 	if options.WrapTextInAllCells {
 		style.Alignment.WrapText = true
@@ -225,23 +232,25 @@ func cloneCell(from, to *xlsx.Cell, options *Options) {
 }
 
 func cloneRow(from, to *xlsx.Row, options *Options) {
-	if from.Height != 0 {
-		to.SetHeight(from.Height)
+	if height := from.GetHeight(); height != 0 {
+		to.SetHeight(height)
 	}
 
-	for _, cell := range from.Cells {
-		newCell := to.AddCell()
-		cloneCell(cell, newCell, options)
-	}
+	from.ForEachCell(func(fromCell *xlsx.Cell) error {
+		toCell := to.AddCell()
+		cloneCell(fromCell, toCell, options)
+		return nil
+	})
 }
 
 func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 	sn := cell.Row.Sheet.Name
 	bflag := false
-	if rgxMerge.MatchString(cell.Value) {
+	value := cell.String()
+	if rgxMerge.MatchString(value) {
 		bflag = true
 	}
-	tpl := strings.Replace(cell.Value, "{{", "{{{", -1)
+	tpl := strings.Replace(value, "{{", "{{{", -1)
 	tpl = strings.Replace(tpl, "}}", "}}}", -1)
 	template, err := raymond.Parse(tpl)
 	if err != nil {
@@ -249,7 +258,7 @@ func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 	}
 	out, err := template.Exec(ctx)
 	if bflag {
-		key := rgxMerge.FindString(cell.Value)
+		key := rgxMerge.FindString(value)
 		key = rgTrim.ReplaceAllString(key, "")
 		isHeader := false
 		if strings.HasPrefix(key, "_") || strings.HasPrefix(key, "_header_") {
@@ -271,6 +280,7 @@ func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 		}
 
 	}
+
 	if err != nil {
 		return err
 	}
@@ -279,17 +289,10 @@ func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 }
 
 func cloneSheet(from, to *xlsx.Sheet) {
-	for _, col := range from.Cols {
-		newCol := xlsx.Col{}
-		style := col.GetStyle()
-		newCol.SetStyle(style)
-		newCol.Width = col.Width
-		newCol.Hidden = col.Hidden
-		newCol.Collapsed = col.Collapsed
-		newCol.Min = col.Min
-		newCol.Max = col.Max
-		to.Cols = append(to.Cols, &newCol)
-	}
+	from.Cols.ForEach(func(idx int, col *xlsx.Col) {
+		to.Cols.Add(col)
+	})
+
 }
 
 func getCtx(in interface{}, i int) map[string]interface{} {
@@ -348,20 +351,27 @@ func isArray(in map[string]interface{}, prop string) bool {
 }
 
 func getListProp(in *xlsx.Row) string {
-	for _, cell := range in.Cells {
-		if cell.Value == "" {
-			continue
+	propValue := ""
+	in.ForEachCell(func(c *xlsx.Cell) error {
+		if propValue != "" {
+			return nil
 		}
-		if match := rgx.FindAllStringSubmatch(cell.Value, -1); match != nil {
-			return match[0][1]
+		if c.Value == "" {
+			return nil
 		}
-	}
-	return ""
+		if match := rgx.FindAllStringSubmatch(c.Value, -1); match != nil {
+			propValue = match[0][1]
+		}
+		return nil
+	})
+
+	return propValue
 }
 
 func getRangeProp(in *xlsx.Row) string {
-	if len(in.Cells) != 0 {
-		match := rangeRgx.FindAllStringSubmatch(in.Cells[0].Value, -1)
+	if in.Sheet.MaxCol != 0 {
+		value := in.GetCell(0).Value
+		match := rangeRgx.FindAllStringSubmatch(value, -1)
 		if match != nil {
 			return match[0][1]
 		}
@@ -373,11 +383,12 @@ func getRangeProp(in *xlsx.Row) string {
 func getRangeEndIndex(rows []*xlsx.Row) int {
 	var nesting int
 	for idx := 0; idx < len(rows); idx++ {
-		if len(rows[idx].Cells) == 0 {
+		if rows[idx].Sheet.MaxCol == 0 {
 			continue
 		}
 
-		if rangeEndRgx.MatchString(rows[idx].Cells[0].Value) {
+		value := rows[idx].GetCell(0).Value
+		if rangeEndRgx.MatchString(value) {
 			if nesting == 0 {
 				return idx
 			}
@@ -386,7 +397,7 @@ func getRangeEndIndex(rows []*xlsx.Row) int {
 			continue
 		}
 
-		if rangeRgx.MatchString(rows[idx].Cells[0].Value) {
+		if rangeRgx.MatchString(value) {
 			nesting++
 		}
 	}
@@ -395,11 +406,13 @@ func getRangeEndIndex(rows []*xlsx.Row) int {
 }
 
 func renderRow(m *Xlst, in *xlsx.Row, ctx interface{}) error {
-	for _, cell := range in.Cells {
+	err := in.ForEachCell(func(cell *xlsx.Cell) error {
 		err := renderCell(m, cell, ctx)
 		if err != nil {
 			return err
 		}
-	}
-	return nil
+		return nil
+	})
+
+	return err
 }
