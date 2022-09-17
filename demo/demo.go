@@ -64,6 +64,8 @@ func demo() {
 				},
 			},
 		},
+		"url":  "https://github.com/",
+		"file": "./demo.go",
 	}
 	err := doc.Render(ctx)
 	if err != nil {

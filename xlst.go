@@ -184,7 +184,7 @@ func (m *Xlst) renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]in
 		if prop == "" {
 			newRow := sheet.AddRow()
 			cloneRow(row, newRow, options)
-			err := renderRow(m, newRow, ctx)
+			err := m.renderRow(newRow, ctx)
 			if err != nil {
 				return err
 			}
@@ -194,7 +194,7 @@ func (m *Xlst) renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]in
 		if !isArray(ctx, prop) {
 			newRow := sheet.AddRow()
 			cloneRow(row, newRow, options)
-			err := renderRow(m, newRow, ctx)
+			err := m.renderRow(newRow, ctx)
 			if err != nil {
 				return err
 			}
@@ -207,7 +207,7 @@ func (m *Xlst) renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]in
 			newRow := sheet.AddRow()
 			cloneRow(row, newRow, options)
 			ctx[prop] = arr.Index(i).Interface()
-			err := renderRow(m, newRow, ctx)
+			err := m.renderRow(newRow, ctx)
 			if err != nil {
 				return err
 			}
@@ -243,10 +243,13 @@ func cloneRow(from, to *xlsx.Row, options *Options) {
 	})
 }
 
-func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
+func (m *Xlst) renderCell(cell *xlsx.Cell, ctx interface{}) error {
 	sn := cell.Row.Sheet.Name
 	bflag := false
 	value := cell.String()
+	if value == "" {
+		return nil
+	}
 	if rgxMerge.MatchString(value) {
 		bflag = true
 	}
@@ -284,7 +287,14 @@ func renderCell(m *Xlst, cell *xlsx.Cell, ctx interface{}) error {
 	if err != nil {
 		return err
 	}
-	cell.Value = out
+	if value == out {
+		return nil
+	}
+	if cell.Hyperlink.Link != "" || cell.Hyperlink.DisplayString != "" {
+		cell.SetHyperlink(out, out, cell.Hyperlink.DisplayString)
+	} else {
+		cell.Value = out
+	}
 	return nil
 }
 
@@ -405,9 +415,9 @@ func getRangeEndIndex(rows []*xlsx.Row) int {
 	return -1
 }
 
-func renderRow(m *Xlst, in *xlsx.Row, ctx interface{}) error {
+func (m *Xlst) renderRow(in *xlsx.Row, ctx interface{}) error {
 	err := in.ForEachCell(func(cell *xlsx.Cell) error {
-		err := renderCell(m, cell, ctx)
+		err := m.renderCell(cell, ctx)
 		if err != nil {
 			return err
 		}
