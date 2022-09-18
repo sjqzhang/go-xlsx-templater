@@ -3,6 +3,7 @@ package xlst
 import (
 	"errors"
 	"fmt"
+	"github.com/aymerick/raymond"
 
 	"io"
 	"reflect"
@@ -10,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aymerick/raymond"
 	xlsx "github.com/tealeg/xlsx/v3"
 )
 
@@ -18,8 +18,10 @@ var (
 	rgTrim      = regexp.MustCompile(`^\{\{\s*|\s*\}\}$`)
 	rgx         = regexp.MustCompile(`\{\{\s*(\w+)\.\w+\s*\}\}`)
 	rgxMerge    = regexp.MustCompile(`\{\{\s*(\w+)\.\w+_merge\s*\}\}`)
+	rgxCellAttr = regexp.MustCompile(`\{\{\s*(?:\w+)\.\w+\s+(?:\w+:\w+\;?){1,}\s*\}\}|\s*(?:\w+)\s+(?:\w+:\w+\;?){1,}\s*\}\}`)
 	rangeRgx    = regexp.MustCompile(`\{\{\s*range\s+(\w+)\s*\}\}`)
 	rangeEndRgx = regexp.MustCompile(`\{\{\s*end\s*\}\}`)
+	rgxSpace    = regexp.MustCompile(`\s+`)
 )
 
 // Xlst Represents template struct
@@ -34,6 +36,7 @@ type Xlst struct {
 type cellCounter struct {
 	cell  *xlsx.Cell
 	count int
+	attr  map[string]interface{}
 }
 
 // Options for render has only one property WrapTextInAllCells for wrapping text
@@ -243,16 +246,77 @@ func cloneRow(from, to *xlsx.Row, options *Options) {
 	})
 }
 
-func (m *Xlst) renderCell(cell *xlsx.Cell, ctx interface{}) error {
+func (m *Xlst) getCellAttr(cell *xlsx.Cell, ctx interface{}, out string) error {
 	sn := cell.Row.Sheet.Name
 	bflag := false
+	fmt.Println(cell.Value)
+	if rgxCellAttr.MatchString(cell.Value) || strings.Index(cell.Value, "info_merge") != -1 {
+		bflag = true
+
+	}
+	if !bflag {
+		return nil
+	}
+	attrMap := make(map[string]interface{})
+
+	key := rgxCellAttr.FindString(cell.Value)
+	key = rgTrim.ReplaceAllString(key, "")
+	key = strings.TrimSpace(key)
+	attrs := strings.SplitN(key, " ", 2)
+	attrStr := ""
+	//attrs := rgxSpace.Split(key, 1)
+	if len(attrs) == 2 {
+		attrStr = attrs[1]
+	}
+	//{{ hello.world merge:true;header:true}}
+
+	attrs = strings.Split(attrStr, ";")
+	for _, attr := range attrs {
+		kv := strings.Split(attr, ":")
+		if len(kv) == 2 {
+			attrMap[kv[0]] = kv[1]
+		}
+	}
+	isHeader := false
+	if _, ok := attrMap["header"]; ok {
+		if strings.HasPrefix(key, "_") || strings.HasPrefix(key, "_header_") || ok {
+
+			isHeader = true
+
+		}
+	}
+	isMerge := false
+	if _, ok := attrMap["merge"]; ok {
+		isMerge = true
+	}
+	if _, ok := m.mergeMap[sn][key]; !ok {
+		m.mergeMap[sn][key] = make(map[string]cellCounter)
+	}
+	if isMerge {
+		if _, ok := m.mergeMap[sn][key][out]; !ok {
+			if isHeader {
+				m.mergeMap[sn][key][out] = cellCounter{cell, 1, attrMap}
+			} else {
+				m.mergeMap[sn][key][out] = cellCounter{cell, 0, attrMap}
+			}
+		} else {
+			counter := m.mergeMap[sn][key][out]
+			counter.count++
+			m.mergeMap[sn][key][out] = counter
+		}
+	}
+	return nil
+
+}
+
+func (m *Xlst) renderCell(cell *xlsx.Cell,
+	ctx interface{}) error {
+
 	value := cell.String()
 	if value == "" {
 		return nil
 	}
-	if rgxMerge.MatchString(value) {
-		bflag = true
-	}
+
 	tpl := strings.Replace(value, "{{", "{{{", -1)
 	tpl = strings.Replace(tpl, "}}", "}}}", -1)
 	template, err := raymond.Parse(tpl)
@@ -260,29 +324,8 @@ func (m *Xlst) renderCell(cell *xlsx.Cell, ctx interface{}) error {
 		return err
 	}
 	out, err := template.Exec(ctx)
-	if bflag {
-		key := rgxMerge.FindString(value)
-		key = rgTrim.ReplaceAllString(key, "")
-		isHeader := false
-		if strings.HasPrefix(key, "_") || strings.HasPrefix(key, "_header_") {
-			isHeader = true
-		}
-		if _, ok := m.mergeMap[sn][key]; !ok {
-			m.mergeMap[sn][key] = make(map[string]cellCounter)
-		}
-		if _, ok := m.mergeMap[sn][key][out]; !ok {
-			if isHeader {
-				m.mergeMap[sn][key][out] = cellCounter{cell, 1}
-			} else {
-				m.mergeMap[sn][key][out] = cellCounter{cell, 0}
-			}
-		} else {
-			counter := m.mergeMap[sn][key][out]
-			counter.count++
-			m.mergeMap[sn][key][out] = counter
-		}
 
-	}
+	m.getCellAttr(cell, ctx, out)
 
 	if err != nil {
 		return err
