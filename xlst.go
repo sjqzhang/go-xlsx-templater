@@ -18,7 +18,8 @@ var (
 	rgTrim      = regexp.MustCompile(`^\{\{\s*|\s*\}\}$`)
 	rgx         = regexp.MustCompile(`\{\{\s*(\w+)\.\w+\s*\}\}`)
 	rgxMerge    = regexp.MustCompile(`\{\{\s*(\w+)\.\w+_merge\s*\}\}`)
-	rgxCellAttr = regexp.MustCompile(`\{\{\s*(?:\w+)\.\w+\s+(?:\w+:\w+\;?){1,}\s*\}\}|\s*(?:\w+)\s+(?:\w+:\w+\;?){1,}\s*\}\}`)
+	rgxCellAttr = regexp.MustCompile(`\{\{\s*(?:\w+)\.\w+\s+(?:\w+:\w+\;?){0,}\s*\}\}|\{\{\s*(?:\w+)\s+(?:\w+:\w+\;?){0,}\s*\}\}|\{\{\s*(?:\w+)\.\w+\s*\}\}|\{\{\s*(?:\w+)\s*\}\}`)
+	rgxAttr     = regexp.MustCompile(`\w+:\w+\;?`)
 	rangeRgx    = regexp.MustCompile(`\{\{\s*range\s+(\w+)\s*\}\}`)
 	rangeEndRgx = regexp.MustCompile(`\{\{\s*end\s*\}\}`)
 	rgxSpace    = regexp.MustCompile(`\s+`)
@@ -246,86 +247,100 @@ func cloneRow(from, to *xlsx.Row, options *Options) {
 	})
 }
 
-func (m *Xlst) getCellAttr(cell *xlsx.Cell, ctx interface{}, out string) error {
+func (m *Xlst) parseCellAttr(cell *xlsx.Cell, ctx interface{}) map[string]interface{} {
 	sn := cell.Row.Sheet.Name
 	bflag := false
-	fmt.Println(cell.Value)
-	if rgxCellAttr.MatchString(cell.Value) || strings.Index(cell.Value, "info_merge") != -1 {
+	attrMap := make(map[string]interface{})
+	if rgxCellAttr.MatchString(cell.Value) {
 		bflag = true
-
 	}
 	if !bflag {
-		return nil
+		return attrMap
 	}
-	attrMap := make(map[string]interface{})
-
-	key := rgxCellAttr.FindString(cell.Value)
-	key = rgTrim.ReplaceAllString(key, "")
-	key = strings.TrimSpace(key)
-	attrs := strings.SplitN(key, " ", 2)
-	attrStr := ""
-	//attrs := rgxSpace.Split(key, 1)
-	if len(attrs) == 2 {
-		attrStr = attrs[1]
-	}
-	//{{ hello.world merge:true;header:true}}
-
-	attrs = strings.Split(attrStr, ";")
-	for _, attr := range attrs {
-		kv := strings.Split(attr, ":")
-		if len(kv) == 2 {
-			attrMap[kv[0]] = kv[1]
-		}
-	}
-	isHeader := false
-	if _, ok := attrMap["header"]; ok {
-		if strings.HasPrefix(key, "_") || strings.HasPrefix(key, "_header_") || ok {
-
-			isHeader = true
-
-		}
-	}
-	isMerge := false
-	if _, ok := attrMap["merge"]; ok {
-		isMerge = true
-	}
-	if _, ok := m.mergeMap[sn][key]; !ok {
-		m.mergeMap[sn][key] = make(map[string]cellCounter)
-	}
-	if isMerge {
-		if _, ok := m.mergeMap[sn][key][out]; !ok {
-			if isHeader {
-				m.mergeMap[sn][key][out] = cellCounter{cell, 1, attrMap}
-			} else {
-				m.mergeMap[sn][key][out] = cellCounter{cell, 0, attrMap}
-			}
+	keys := rgxCellAttr.FindAllString(cell.Value, 100)
+	for _, src := range keys {
+		key:=src
+		key = rgTrim.ReplaceAllString(key, "")
+		key = strings.TrimSpace(key)
+		//attrs := strings.SplitN(key, " ", 2)
+		attrs := rgxSpace.Split(key, 2)
+		attrStr := ""
+		if len(attrs) == 2 {
+			attrStr = attrs[1]
+			key = attrs[0]
+			attrMap[fmt.Sprintf("_key_%v", key)] = fmt.Sprintf("{{%v}}", key)
+			attrMap["key"] = fmt.Sprintf("{{%v}}", key)
+			cell.Value=strings.Replace(cell.Value,src,fmt.Sprintf("{{%v}}", key),-1)
 		} else {
-			counter := m.mergeMap[sn][key][out]
-			counter.count++
-			m.mergeMap[sn][key][out] = counter
+			key = attrs[0]
+			attrMap[fmt.Sprintf("_key_%v", key)] = fmt.Sprintf("{{%v}}", key)
+			attrMap["key"] = fmt.Sprintf("{{%v}}", key)
+			cell.Value=strings.Replace(cell.Value,src,fmt.Sprintf("{{%v}}", key),-1)
+		}
+		attrs = strings.Split(attrStr, ";")
+		for _, attr := range attrs {
+			kv := strings.Split(attr, ":")
+			if len(kv) == 2 {
+				attrMap[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+			}
+		}
+
+		if _, ok := m.mergeMap[sn][key]; !ok {
+			m.mergeMap[sn][key] = make(map[string]cellCounter)
 		}
 	}
-	return nil
+
+	return attrMap
+
+	//if isMerge {
+	//	if _, ok := m.mergeMap[sn][key][out]; !ok {
+	//		if isHeader {
+	//			m.mergeMap[sn][key][out] = cellCounter{cell, 1, attrMap}
+	//		} else {
+	//			m.mergeMap[sn][key][out] = cellCounter{cell, 0, attrMap}
+	//		}
+	//	} else {
+	//		counter := m.mergeMap[sn][key][out]
+	//		counter.count++
+	//		m.mergeMap[sn][key][out] = counter
+	//	}
+	//}
 
 }
 
-func (m *Xlst) renderCell(cell *xlsx.Cell,
-	ctx interface{}) error {
+func (m *Xlst) renderCell(cell *xlsx.Cell, ctx interface{}) error {
 
-	value := cell.String()
-	if value == "" {
-		return nil
+	attrMap := m.parseCellAttr(cell, ctx)
+	sn := cell.Row.Sheet.Name
+	value := ""
+	if v, ok := attrMap["key"]; ok {
+		value = v.(string)
 	}
-
-	tpl := strings.Replace(value, "{{", "{{{", -1)
+	//fmt.Println(attrMap)
+	tpl := strings.Replace(cell.Value, "{{", "{{{", -1)
 	tpl = strings.Replace(tpl, "}}", "}}}", -1)
 	template, err := raymond.Parse(tpl)
 	if err != nil {
 		return err
 	}
 	out, err := template.Exec(ctx)
+	if v, ok := attrMap["key"]; ok {
+		key := rgTrim.ReplaceAllString(v.(string), "")
+		if _, ok := attrMap["merge"]; ok {
+			if _, ok := m.mergeMap[sn][key][out]; !ok {
+				if _, ok := attrMap["header"]; ok {
+					m.mergeMap[sn][key][out] = cellCounter{cell, 1, attrMap}
+				} else {
+					m.mergeMap[sn][key][out] = cellCounter{cell, 0, attrMap}
+				}
+			} else {
+				counter := m.mergeMap[sn][key][out]
+				counter.count++
+				m.mergeMap[sn][key][out] = counter
+			}
 
-	m.getCellAttr(cell, ctx, out)
+		}
+	}
 
 	if err != nil {
 		return err
