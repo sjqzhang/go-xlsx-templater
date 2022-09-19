@@ -312,12 +312,12 @@ func (m *Xlst) renderCell(cell *xlsx.Cell, ctx interface{}) error {
 
 	attrMap := m.parseCellAttr(cell, ctx)
 	sn := cell.Row.Sheet.Name
-	value := ""
-	if v, ok := attrMap["key"]; ok {
-		value = v.(string)
-	}
+	//value := ""
+	//if v, ok := attrMap["key"]; ok {
+	//	value = v.(string)
+	//}
 	//fmt.Println(attrMap)
-	tpl := strings.Replace(cell.Value, "{{", "{{{", -1)
+	tpl := strings.Replace(cell.String(), "{{", "{{{", -1)
 	tpl = strings.Replace(tpl, "}}", "}}}", -1)
 	template, err := raymond.Parse(tpl)
 	if err != nil {
@@ -345,7 +345,7 @@ func (m *Xlst) renderCell(cell *xlsx.Cell, ctx interface{}) error {
 	if err != nil {
 		return err
 	}
-	if value == out {
+	if cell.String() == out {
 		return nil
 	}
 	if cell.Hyperlink.Link != "" || cell.Hyperlink.DisplayString != "" {
